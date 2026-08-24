@@ -24,6 +24,7 @@ import { PostMentionEmail } from './templates/post-mention'
 import { ChangelogPublishedEmail } from './templates/changelog-published'
 import { FeedbackLinkedEmail } from './templates/feedback-linked'
 import { PasswordResetEmail } from './templates/password-reset'
+import { PasswordVerificationEmail } from './templates/password-verification'
 import { RecoveryCodeUsedEmail } from './templates/recovery-code-used'
 import { NewSignInEmail } from './templates/new-sign-in'
 
@@ -354,6 +355,37 @@ export async function sendPasswordResetEmail(
     to,
     subject: 'Reset your Quackback password',
     react: PasswordResetEmail({ resetLink, logoUrl }),
+  })
+}
+
+// ============================================================================
+// Password Verification Email
+// ============================================================================
+
+interface SendPasswordVerificationParams {
+  to: string
+  verificationLink: string
+  logoUrl?: string
+}
+
+export async function sendPasswordVerificationEmail(
+  params: SendPasswordVerificationParams
+): Promise<EmailResult> {
+  const { to, verificationLink, logoUrl } = params
+
+  if (getProvider() === 'console') {
+    log.debug(
+      { email_type: 'PasswordVerificationEmail', to, verificationLink },
+      '[dev] email preview (console provider)'
+    )
+    return { sent: false }
+  }
+
+  log.debug('sending password verification email')
+  return sendEmail({
+    to,
+    subject: 'Verify your Quackback email',
+    react: PasswordVerificationEmail({ verificationLink, logoUrl }),
   })
 }
 
@@ -788,5 +820,6 @@ export { PostMentionEmail } from './templates/post-mention'
 export { ChangelogPublishedEmail } from './templates/changelog-published'
 export { FeedbackLinkedEmail } from './templates/feedback-linked'
 export { PasswordResetEmail } from './templates/password-reset'
+export { PasswordVerificationEmail } from './templates/password-verification'
 export { RecoveryCodeUsedEmail } from './templates/recovery-code-used'
 export { NewSignInEmail } from './templates/new-sign-in'

@@ -84,7 +84,8 @@ async function createAuth() {
     twoFactor: twoFactorTable,
     eq,
   } = await import('@/lib/server/db')
-  const { sendPasswordResetEmail, isEmailConfigured } = await import('@quackback/email')
+  const { sendPasswordResetEmail, sendPasswordVerificationEmail, isEmailConfigured } =
+    await import('@quackback/email')
   const { getPlatformCredentials } =
     await import('@/lib/server/domains/platform-credentials/platform-credential.service')
   const { getAllAuthProviders } = await import('./auth-providers')
@@ -265,6 +266,7 @@ async function createAuth() {
     // Password auth — default sign-in method for self-hosted deployments
     emailAndPassword: {
       enabled: true,
+      requireEmailVerification: true,
       minPasswordLength: 8,
       maxPasswordLength: 128,
       autoSignIn: true,
@@ -282,6 +284,28 @@ async function createAuth() {
         await sendPasswordResetEmail({ to: user.email, resetLink: url, logoUrl })
       },
       resetPasswordTokenExpiresIn: 60 * 60 * 24, // 24 hours
+    },
+
+    emailVerification: {
+      sendOnSignUp: true,
+      autoSignInAfterVerification: true,
+      async sendVerificationEmail({ user, url }) {
+        if (!isEmailConfigured()) {
+          log.warn(
+            { user_id: user.id },
+            'email verification requested but email is not configured; link not delivered'
+          )
+          return
+        }
+        const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
+        const settings = await db.query.settings.findFirst({ columns: { logoKey: true } })
+        const logoUrl = getEmailSafeUrl(settings?.logoKey) ?? undefined
+        await sendPasswordVerificationEmail({
+          to: user.email,
+          verificationLink: url,
+          logoUrl,
+        })
+      },
     },
 
     // Account linking - allow users to link multiple OAuth providers to their account

@@ -5,6 +5,7 @@ import { WelcomeEmail } from '../templates/welcome'
 import { InvitationEmail } from '../templates/invitation'
 import { MagicLinkEmail } from '../templates/magic-link'
 import { PasswordResetEmail } from '../templates/password-reset'
+import { PasswordVerificationEmail } from '../templates/password-verification'
 import { StatusChangeEmail } from '../templates/status-change'
 import { NewCommentEmail } from '../templates/new-comment'
 import { ChangelogPublishedEmail } from '../templates/changelog-published'
@@ -56,6 +57,17 @@ describe('email templates use brand logo when provided', () => {
   it('PasswordResetEmail renders brand logo', async () => {
     const html = await render(
       PasswordResetEmail({ resetLink: 'https://example.com/reset', logoUrl: BRAND_LOGO })
+    )
+    expect(html).toContain(BRAND_LOGO)
+    expect(html).not.toContain(DEFAULT_LOGO_URL)
+  })
+
+  it('PasswordVerificationEmail renders brand logo', async () => {
+    const html = await render(
+      PasswordVerificationEmail({
+        verificationLink: 'https://example.com/verify-email',
+        logoUrl: BRAND_LOGO,
+      })
     )
     expect(html).toContain(BRAND_LOGO)
     expect(html).not.toContain(DEFAULT_LOGO_URL)
