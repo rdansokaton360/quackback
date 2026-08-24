@@ -40,7 +40,7 @@ export interface S3Config {
  * Returns true if all required environment variables are set.
  */
 export function isS3Configured(): boolean {
-  return !!(config.s3Bucket && config.s3Region && config.s3AccessKeyId && config.s3SecretAccessKey)
+  return !!(config.s3Bucket && config.s3Region)
 }
 
 /**
@@ -48,7 +48,7 @@ export function isS3Configured(): boolean {
  * Throws if required variables are missing.
  */
 export function getS3Config(): S3Config {
-  if (!config.s3Bucket || !config.s3Region || !config.s3AccessKeyId || !config.s3SecretAccessKey) {
+  if (!config.s3Bucket || !config.s3Region) {
     throw new Error(
       'S3 storage is not configured. Set S3_BUCKET, S3_REGION, S3_ACCESS_KEY_ID, and S3_SECRET_ACCESS_KEY.'
     )
@@ -102,7 +102,6 @@ interface S3Module {
     region: string
     endpoint?: string
     forcePathStyle: boolean
-    credentials: { accessKeyId: string; secretAccessKey: string }
   }) => S3ClientInstance
   PutObjectCommand: new (input: BucketKeyInput) => S3Command
   GetObjectCommand: new (input: BucketKeyInput) => S3Command
@@ -156,10 +155,6 @@ async function getS3Client(): Promise<S3ClientInstance> {
     region: s3Config.region,
     endpoint: s3Config.endpoint,
     forcePathStyle: s3Config.forcePathStyle,
-    credentials: {
-      accessKeyId: s3Config.accessKeyId,
-      secretAccessKey: s3Config.secretAccessKey,
-    },
   })
 
   return _s3Client

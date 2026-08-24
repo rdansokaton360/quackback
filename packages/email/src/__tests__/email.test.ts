@@ -8,6 +8,7 @@ import {
   sendStatusChangeEmail,
   sendNewCommentEmail,
   sendPasswordResetEmail,
+  sendPasswordVerificationEmail,
 } from '../index'
 
 /** Save and restore env vars around each test. */
@@ -141,6 +142,14 @@ describe('console mode returns { sent: false }', () => {
     const result = await sendPasswordResetEmail({
       to: 'test@example.com',
       resetLink: 'https://example.com/auth/reset-password?token=abc',
+    })
+    expect(result).toEqual({ sent: false })
+  })
+
+  it('sendPasswordVerificationEmail returns { sent: false }', async () => {
+    const result = await sendPasswordVerificationEmail({
+      to: 'test@example.com',
+      verificationLink: 'https://example.com/auth/verify-email?token=abc',
     })
     expect(result).toEqual({ sent: false })
   })
