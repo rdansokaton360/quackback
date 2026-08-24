@@ -179,7 +179,13 @@ async function createAuth() {
     const providerConfig: Record<string, unknown> = {
       clientId: creds.clientId,
       clientSecret: creds.clientSecret,
-      mapProfileToUser: mapProfileLocale,
+      mapProfileToUser:
+        provider.id === 'microsoft'
+          ? (profile: unknown) => ({
+              ...mapProfileLocale(profile),
+              emailVerified: true,
+            })
+          : mapProfileLocale,
     }
     // Add provider-specific fields (e.g., tenantId for Microsoft, issuer for GitLab)
     for (const field of provider.platformCredentials) {
