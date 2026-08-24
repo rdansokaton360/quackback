@@ -11,7 +11,7 @@
 #   - the upload bucket is PRIVATE (served through the app at /api/storage)
 #
 # Quick start:
-#   git clone https://github.com/QuackbackIO/quackback.git && cd quackback
+#   git clone https://github.com/rdansokaton360/quackback.git && cd quackback
 #   cp .env.prod.example .env      # then fill in every value
 #   docker compose -f docker-compose.prod.yml up -d
 #
@@ -28,7 +28,7 @@
 
 services:
   app:
-    image: ghcr.io/quackbackio/quackback:${QUACKBACK_TAG:-latest}
+    image: ghcr.io/rdansokaton360/quackback:${QUACKBACK_TAG:-latest}
     container_name: quackback-app
     restart: unless-stopped
     init: true
