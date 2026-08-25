@@ -3,13 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 
 const mockIsS3Configured = vi.fn(() => true)
-const mockGetS3Config = vi.fn(() => ({ secretAccessKey: 'test-secret' }))
 const mockUploadObject = vi.fn(async () => {})
 const mockVerifyProxyUploadToken = vi.fn(() => true)
 
 vi.mock('@/lib/server/storage/s3', () => ({
   isS3Configured: mockIsS3Configured,
-  getS3Config: mockGetS3Config,
   uploadObject: mockUploadObject,
   verifyProxyUploadToken: mockVerifyProxyUploadToken,
   isAllowedImageType: (t: string) =>
@@ -18,7 +16,7 @@ vi.mock('@/lib/server/storage/s3', () => ({
 }))
 
 // Mutable so individual tests can flip s3Proxy to false
-const mockConfig = { s3Proxy: true }
+const mockConfig = { s3Proxy: true, secretKey: 'application-secret' }
 vi.mock('@/lib/server/config', () => ({ config: mockConfig }))
 
 const { handleProxyUpload } = await import('../$.js')
@@ -50,8 +48,8 @@ function makeRequest(
 beforeEach(() => {
   vi.clearAllMocks()
   mockConfig.s3Proxy = true
+  mockConfig.secretKey = 'application-secret'
   mockIsS3Configured.mockReturnValue(true)
-  mockGetS3Config.mockReturnValue({ secretAccessKey: 'test-secret' })
   mockVerifyProxyUploadToken.mockReturnValue(true)
   mockUploadObject.mockResolvedValue(undefined)
 })
@@ -119,8 +117,8 @@ describe('PUT /api/storage/* (proxy upload)', () => {
     expect(mockUploadObject).not.toHaveBeenCalled()
   })
 
-  it('passes the secretAccessKey from getS3Config to verifyProxyUploadToken', async () => {
-    mockGetS3Config.mockReturnValue({ secretAccessKey: 'my-secret' })
+  it('passes the application secret to verifyProxyUploadToken', async () => {
+    mockConfig.secretKey = 'my-secret'
     await handleProxyUpload({ request: makeRequest() })
     expect(mockVerifyProxyUploadToken).toHaveBeenCalledWith(
       'my-secret',
