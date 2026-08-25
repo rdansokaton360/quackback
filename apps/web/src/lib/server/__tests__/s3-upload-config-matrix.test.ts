@@ -26,10 +26,11 @@ import { createHmac } from 'node:crypto'
 // ── Shared mock config (mutated per test) ────────────────────────────────────
 
 const mockConfig = {
+  secretKey: 'application-secret-key',
   s3Bucket: 'my-bucket',
   s3Region: 'us-east-1',
-  s3AccessKeyId: 'access-key',
-  s3SecretAccessKey: 'secret-key',
+  s3AccessKeyId: 'access-key' as string | undefined,
+  s3SecretAccessKey: 'secret-key' as string | undefined,
   s3Endpoint: undefined as string | undefined,
   s3ForcePathStyle: false,
   s3PublicUrl: undefined as string | undefined,
@@ -89,6 +90,7 @@ beforeEach(() => {
   mockConfig.s3PublicUrl = undefined
   mockConfig.s3Proxy = false
   mockConfig.s3ForcePathStyle = false
+  mockConfig.secretKey = 'application-secret-key'
   mockConfig.baseUrl = 'https://app.example.com'
 })
 
@@ -192,7 +194,14 @@ describe('Case C — S3_PROXY=true, no S3_PUBLIC_URL (Docker self-hosted / ngrok
 
   it('upload URL HMAC signature is valid', async () => {
     const { uploadUrl } = await generatePresignedUploadUrl(KEY, CT)
-    expect(verifySig(uploadUrl, KEY, CT, 'secret-key')).toBe(true)
+    expect(verifySig(uploadUrl, KEY, CT, 'application-secret-key')).toBe(true)
+  })
+
+  it('uses the application secret when AWS credentials are omitted', async () => {
+    mockConfig.s3AccessKeyId = undefined
+    mockConfig.s3SecretAccessKey = undefined
+    const { uploadUrl } = await generatePresignedUploadUrl(KEY, CT)
+    expect(verifySig(uploadUrl, KEY, CT, 'application-secret-key')).toBe(true)
   })
 
   it('returns a BASE_URL/api/storage publicUrl', async () => {
@@ -252,7 +261,7 @@ describe('Case D — S3_PROXY=true, S3_PUBLIC_URL set (proxy uploads, CDN downlo
 
   it('upload URL HMAC is still valid (signed against correct key path)', async () => {
     const { uploadUrl } = await generatePresignedUploadUrl(KEY, CT)
-    expect(verifySig(uploadUrl, KEY, CT, 'secret-key')).toBe(true)
+    expect(verifySig(uploadUrl, KEY, CT, 'application-secret-key')).toBe(true)
   })
 
   it('does not call getSignedUrl', async () => {

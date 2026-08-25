@@ -214,7 +214,7 @@ export async function generatePresignedUploadUrl(
   const publicUrl = buildPublicUrl(s3Config, key)
 
   if (config.s3Proxy) {
-    const uploadUrl = buildProxyUploadUrl(s3Config.secretAccessKey, key, contentType, expiresIn)
+    const uploadUrl = buildProxyUploadUrl(config.secretKey, key, contentType, expiresIn)
     return { uploadUrl, publicUrl, key }
   }
 
