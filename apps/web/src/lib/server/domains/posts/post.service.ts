@@ -84,6 +84,10 @@ export async function createPost(
   },
   options?: { skipDispatch?: boolean; headers?: Headers }
 ): Promise<CreatePostResult> {
+  const startedAt = Date.now()
+  const stage = (name: string, fields: Record<string, unknown> = {}) => {
+    log.info({ ...fields, stage: name, elapsed_ms: Date.now() - startedAt }, 'create post stage')
+  }
   log.info({ board_id: input.boardId }, 'create post')
 
   // Validate input before the tier gate — invalid input doesn't deserve a
@@ -100,6 +104,7 @@ export async function createPost(
   if (content.length > 10000) {
     throw new ValidationError('VALIDATION_ERROR', 'Content must not exceed 10,000 characters')
   }
+  stage('validation:complete', { content_json_provided: Boolean(input.contentJson) })
 
   // Tier-limit gate (no-op in OSS — getTierLimits short-circuits to OSS_TIER_LIMITS
   // which has maxPosts: null, so enforceCountLimit returns immediately).
@@ -116,6 +121,7 @@ export async function createPost(
       return row?.count ?? 0
     },
   })
+  stage('tier-limit:complete')
 
   // Validate board exists and get status in parallel.
   // The deletedAt filter here is load-bearing: rehostExternalImages (below) uploads
@@ -136,6 +142,10 @@ export async function createPost(
           .then((rows) => rows[0])
       : db.query.postStatuses.findFirst({ where: eq(postStatuses.id, input.statusId!) }),
   ])
+  stage('board-status:complete', {
+    board_found: Boolean(board),
+    status_found: Boolean(statusResult),
+  })
 
   if (!board) {
     throw new NotFoundError('BOARD_NOT_FOUND', `Board with ID ${input.boardId} not found`)
@@ -153,6 +163,7 @@ export async function createPost(
   if (!createDecision.allowed) {
     throw new ValidationError('POST_CREATE_DENIED', createDecision.reason)
   }
+  stage('policy:complete', { requires_approval: createDecision.requiresApproval })
   // Provisional — recomputed authoritatively under the board row lock inside
   // the transaction below (closes the TOCTOU across the image-rehost window).
   let moderationState: 'published' | 'pending' = createDecision.requiresApproval
@@ -178,11 +189,14 @@ export async function createPost(
 
   // Create post, add tags, and auto-upvote in a single transaction
   const parsedContentJson = input.contentJson ?? markdownToTiptapJson(content)
+  stage('image-processing:start')
   const contentJson = await rehostExternalImages(parsedContentJson, {
     contentType: 'post',
     principalId: author.principalId,
   })
+  stage('image-processing:complete')
 
+  stage('transaction:start')
   const post = await db.transaction(async (tx) => {
     // Re-fetch the board (with its access matrix) under a row lock to close the
     // TOCTOU between the precheck above and the insert. Two races are covered:
@@ -229,6 +243,7 @@ export async function createPost(
         ...(input.createdAt && { createdAt: input.createdAt }),
       })
       .returning()
+    stage('transaction:post-insert', { post_id: newPost.id })
 
     // Add tags if provided
     if (input.tagIds && input.tagIds.length > 0) {
@@ -244,6 +259,7 @@ export async function createPost(
 
     return newPost
   })
+  stage('transaction:complete', { post_id: post.id })
 
   if (moderationState === 'pending') {
     await recordAuditEvent({
@@ -264,7 +280,9 @@ export async function createPost(
   if (!options?.skipDispatch) {
     // Auto-subscribe the author to their own post. Runs even when held for
     // moderation so the author receives notifications on approval/rejection.
+    stage('subscription:start')
     await subscribeToPost(author.principalId, post.id, 'author')
+    stage('subscription:complete')
 
     createActivity({
       postId: post.id,
@@ -277,6 +295,7 @@ export async function createPost(
     // the post is visible. A held post must not trigger integrations until a
     // moderator approves it — approvePostFn calls announcePublishedPost() then.
     if (moderationState === 'published') {
+      stage('announcement:start')
       await announcePublishedPost(post.id, {
         post: {
           id: post.id,
@@ -289,9 +308,11 @@ export async function createPost(
         board: { slug: board.slug, name: board.name },
         author,
       })
+      stage('announcement:complete')
     }
   }
 
+  stage('complete', { post_id: post.id })
   return { ...post, boardSlug: board.slug }
 }
 
