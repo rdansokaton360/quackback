@@ -328,14 +328,21 @@ export const fetchPostFeedbackSourceFn = createServerFn({ method: 'GET' })
 export const createPostFn = createServerFn({ method: 'POST' })
   .validator(createPostSchema)
   .handler(async ({ data }) => {
+    const startedAt = Date.now()
+    const stage = (name: string, fields: Record<string, unknown> = {}) => {
+      log.info({ ...fields, stage: name, elapsed_ms: Date.now() - startedAt }, 'create post stage')
+    }
     log.info({ board_id: data.boardId }, 'create post')
     try {
+      stage('auth:start')
       const auth = await requireAuth({ roles: ['admin', 'member'] })
+      stage('auth:complete', { principal_id: auth.principal.id })
       // Caller is always team — the policy gate inside createPost bypasses
       // approval for team via canCreatePost. We still build the actor to
       // pass through so audience checks are correct (e.g. a non-team API
       // path wouldn't get here at all).
       const actor = await policyActorFromAuth(auth)
+      stage('actor:complete')
 
       // Resolve author: use specified principal or fall back to authenticated user
       let author: {
@@ -366,14 +373,20 @@ export const createPostFn = createServerFn({ method: 'POST' })
             // target — policy decisions reflect who's doing the create.
             actor,
           }
+          stage('author-override:complete', { author_principal_id: selectedPrincipal.id })
         }
       }
 
+      stage('content-sanitize:start', { has_content_json: Boolean(data.contentJson) })
+      const contentJson = data.contentJson ? sanitizeTiptapContent(data.contentJson) : undefined
+      stage('content-sanitize:complete')
+
+      stage('service:start')
       const result = await createPost(
         {
           title: data.title,
           content: data.content,
-          contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : undefined,
+          contentJson,
           boardId: data.boardId as BoardId,
           statusId: data.statusId as StatusId | undefined,
           tagIds: data.tagIds as TagId[] | undefined,
@@ -381,6 +394,7 @@ export const createPostFn = createServerFn({ method: 'POST' })
         author,
         { headers: getRequestHeaders() }
       )
+      stage('service:complete', { post_id: result.id })
       log.info({ post_id: result.id }, 'post created')
 
       // Events are now dispatched by the service layer

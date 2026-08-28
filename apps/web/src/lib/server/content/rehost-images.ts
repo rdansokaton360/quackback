@@ -248,13 +248,20 @@ export async function rehostExternalImages(
     const nodes = collectImageNodes(cloned)
     if (nodes.length === 0) return cloned
 
+    log.info(
+      { content_type: opts.contentType, image_nodes: nodes.length },
+      'image processing started'
+    )
+
     // Dedupe by src; cap at MAX_IMAGES_PER_SAVE unique URLs.
     const unique = new Map<string, { nodes: ImageNode[]; rewrite: string | null }>()
     let considered = 0
+    let trusted = 0
     for (const node of nodes) {
       const src = node.attrs?.src
       if (typeof src !== 'string' || src.length === 0) continue
       if (isTrustedAttachmentUrl(src)) {
+        trusted++
         // Not an error — just skip silently. Keep src as-is.
         continue
       }
@@ -270,11 +277,26 @@ export async function rehostExternalImages(
       if (entry) entry.nodes.push(node)
     }
 
+    log.info(
+      {
+        content_type: opts.contentType,
+        image_nodes: nodes.length,
+        trusted_images: trusted,
+        external_images: unique.size,
+      },
+      'image processing classified'
+    )
+
     // Fetch + upload each unique URL sequentially.
     for (const [src, entry] of unique) {
+      log.info(
+        { content_type: opts.contentType, source: src.slice(0, 200) },
+        'external image started'
+      )
       const result = await rehostOne(src, opts)
       if ('url' in result) {
         entry.rewrite = result.url
+        log.info({ content_type: opts.contentType }, 'external image completed')
       } else {
         logRejection(src, result.rejected, opts)
       }
@@ -290,6 +312,13 @@ export async function rehostExternalImages(
       }
     }
 
+    log.info(
+      {
+        content_type: opts.contentType,
+        rewritten_images: [...unique.values()].filter((entry) => entry.rewrite !== null).length,
+      },
+      'image processing completed'
+    )
     return cloned
   } catch (err) {
     log.error({ err }, 'unexpected error, returning input unchanged')
