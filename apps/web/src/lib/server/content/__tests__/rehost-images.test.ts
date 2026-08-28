@@ -20,6 +20,13 @@ vi.mock('@/lib/server/storage/s3', () => ({
   uploadImageBuffer: vi.fn(),
 }))
 
+const mockConfig = vi.hoisted(() => ({
+  baseUrl: 'https://app.example.com',
+  s3PublicUrl: undefined as string | undefined,
+}))
+
+vi.mock('@/lib/server/config', () => ({ config: mockConfig }))
+
 // The bare global fetch must NEVER be used on the rehost path — that would
 // reopen the SSRF window safeFetch closes. We stub it to assert it stays cold.
 const fetchMock = vi.fn()
@@ -75,6 +82,8 @@ const JPEG_HEADER = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('fetch', fetchMock)
+  mockConfig.baseUrl = 'https://app.example.com'
+  mockConfig.s3PublicUrl = undefined
   isS3ConfiguredMock.mockReturnValue(true)
   uploadImageBufferMock.mockImplementation(async (_buf, _mime, prefix) => ({
     url: `https://cdn.example.com/${prefix}/rehosted-${Math.random().toString(36).slice(2, 8)}.png`,
@@ -203,7 +212,7 @@ describe('rehostExternalImages — happy paths', () => {
       ],
     } as unknown as TiptapContent
 
-    process.env.S3_PUBLIC_URL = 'https://cdn.example.com'
+    mockConfig.s3PublicUrl = 'https://cdn.example.com'
 
     const output = await rehostExternalImages(input, { contentType: 'post' })
     const node = (output.content as unknown as Array<{ attrs: { src: string } }>)[0]
@@ -211,14 +220,24 @@ describe('rehostExternalImages — happy paths', () => {
     expect(node.attrs.src).toBe('https://cdn.example.com/post-images/existing.png')
     expect(safeFetchMock).not.toHaveBeenCalled()
 
-    delete process.env.S3_PUBLIC_URL
+    mockConfig.s3PublicUrl = undefined
+  })
+
+  it('skips private-bucket URLs served through the app storage route', async () => {
+    const src = 'https://app.example.com/api/storage/post-images/2026/08/existing.png'
+    const output = await rehostExternalImages(docWithImages(src), { contentType: 'post' })
+    const node = (output.content as unknown as Array<{ attrs: { src: string } }>)[0]
+
+    expect(node.attrs.src).toBe(src)
+    expect(safeFetchMock).not.toHaveBeenCalled()
+    expect(uploadImageBufferMock).not.toHaveBeenCalled()
   })
 
   it('does not treat a prefix-matching attacker host as same-origin', async () => {
     // Attacker registers cdn.example.com.attacker.tld so the URL string
     // starts with the public URL's scheme+host prefix. A naive startsWith
     // check would skip the rehost and leave the attacker image embedded.
-    process.env.S3_PUBLIC_URL = 'https://cdn.example.com'
+    mockConfig.s3PublicUrl = 'https://cdn.example.com'
     safeFetchMock.mockResolvedValueOnce(okImageResponse('image/png', PNG_HEADER))
     uploadImageBufferMock.mockResolvedValueOnce({
       url: 'https://cdn.example.com/post-images/rehosted.png',
@@ -232,7 +251,7 @@ describe('rehostExternalImages — happy paths', () => {
     expect(safeFetchMock).toHaveBeenCalledTimes(1)
     expect(uploadImageBufferMock).toHaveBeenCalledTimes(1)
 
-    delete process.env.S3_PUBLIC_URL
+    mockConfig.s3PublicUrl = undefined
   })
 
   it('handles a data-URI PNG', async () => {

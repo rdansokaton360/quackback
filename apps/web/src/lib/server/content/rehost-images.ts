@@ -17,6 +17,7 @@
 
 import type { TiptapContent } from '@/lib/server/db'
 import { isS3Configured, uploadImageBuffer } from '@/lib/server/storage/s3'
+import { isTrustedAttachmentUrl } from '@/lib/server/storage/trusted-url'
 import { safeFetch, SsrfError, ResponseTooLargeError, TimeoutError } from './ssrf-guard'
 import { sniffImageMime, ALLOWED_REHOST_MIMES } from './magic-bytes'
 import { logger } from '@/lib/server/logger'
@@ -121,31 +122,6 @@ function parseDataUri(src: string): { mime: string; buffer: Buffer } {
     ? Buffer.from(payload, 'base64')
     : Buffer.from(decodeURIComponent(payload), 'utf8')
   return { mime, buffer }
-}
-
-/**
- * Compare parsed URL origins (and path prefix) to decide whether a src is
- * already on our workspace storage. A raw `startsWith` against the env value
- * would let an attacker host `cdn.example.com.attacker.tld` bypass rehost by
- * embedding a matching prefix.
- */
-function isSameOrigin(src: string): boolean {
-  const publicUrl = process.env.S3_PUBLIC_URL
-  if (!publicUrl) return false
-  let srcUrl: URL
-  let publicUrlParsed: URL
-  try {
-    srcUrl = new URL(src)
-    publicUrlParsed = new URL(publicUrl)
-  } catch {
-    return false
-  }
-  if (srcUrl.origin !== publicUrlParsed.origin) return false
-  // If the public URL includes a path (e.g. https://cdn.example.com/bucket),
-  // require the src path to be inside it.
-  const publicPath = publicUrlParsed.pathname.replace(/\/$/, '')
-  if (publicPath === '') return true
-  return srcUrl.pathname === publicPath || srcUrl.pathname.startsWith(`${publicPath}/`)
 }
 
 /**
@@ -278,7 +254,7 @@ export async function rehostExternalImages(
     for (const node of nodes) {
       const src = node.attrs?.src
       if (typeof src !== 'string' || src.length === 0) continue
-      if (isSameOrigin(src)) {
+      if (isTrustedAttachmentUrl(src)) {
         // Not an error — just skip silently. Keep src as-is.
         continue
       }
